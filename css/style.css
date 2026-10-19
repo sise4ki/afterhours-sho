@@ -3095,3 +3095,10 @@ a {
         color: #ff3038 !important;
     }
 }
+/* Фикс сетки: заставляем карточки-ссылки правильно вставать в колонки */
+.product-grid .product-card,
+.products-grid .product-card {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
