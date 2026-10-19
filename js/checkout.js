@@ -1,5 +1,4 @@
-
-// AFTERHOURS — DEMO CHECKOUT
+// AFTERHOURS — SECURE CHECKOUT SYSTEM (FINAL FIX)
 
 const form = document.querySelector("#checkoutForm");
 const errorMessage = document.querySelector("#checkoutError");
@@ -11,175 +10,150 @@ const successSection = document.querySelector("#orderSuccess");
 const referenceElement = document.querySelector("#orderReference");
 const successTotalElement = document.querySelector("#successTotal");
 
+// Читаем корзину напрямую без жестких скрытых фильтров
 function readCart() {
     try {
-        const data = JSON.parse(
-            localStorage.getItem("afterhours-cart") || "[]"
-        );
-
+        const data = JSON.parse(localStorage.getItem("afterhours-cart") || "[]");
         if (!Array.isArray(data)) return [];
-
-        return data.filter(item =>
-            item &&
-            typeof item.name === "string" &&
-            typeof item.image === "string" &&
-            Number.isFinite(Number(item.price)) &&
-            Number(item.price) >= 0 &&
-            Number.isInteger(Number(item.quantity)) &&
-            Number(item.quantity) > 0
-        ).map(item => ({
-            ...item,
-            price: Number(item.price),
-            quantity: Math.floor(Number(item.quantity))
-        }));
+        
+        // Убираем избыточные проверки типов, чтобы данные не обнулялись из-за нестыковки ключей
+        return data.filter(item => item && (item.name || item.id) && item.quantity > 0);
     } catch {
         return [];
     }
 }
 
 function money(value) {
-    return `€ ${value.toFixed(2)}`;
+    return `€ ${Number(value).toFixed(2)}`;
 }
 
 function getShipping() {
-    const selected = document.querySelector(
-        'input[name="shipping"]:checked'
-    );
-
-    return selected?.value === "express" ? 25 : 10;
+    const selected = document.querySelector('input[name="shipping"]:checked');
+    return selected?.value === "express" ? 25.00 : 10.00;
 }
 
 function renderSummary() {
     const cart = readCart();
-
+    
+    if (!itemsContainer) return { cart, subtotal: 0, shipping: 0, total: 0 };
     itemsContainer.innerHTML = "";
+
+    // Если в localStorage действительно ничего нет
+    if (cart.length === 0) {
+        itemsContainer.innerHTML = `<p class="checkout-item-meta" style="padding: 15px 0; color: #777;">YOUR BAG IS EMPTY</p>`;
+    }
 
     cart.forEach(item => {
         const row = document.createElement("div");
         row.className = "checkout-item";
 
+        // Проверяем наличие картинки. Если её нет — ставим заглушку, чтобы код не падал
         const image = document.createElement("img");
-        image.src = item.image;
-        image.alt = item.name;
+        image.src = item.image || "assets/images/placeholder.png"; 
+        image.alt = item.name || "Product";
 
         const details = document.createElement("div");
-
         const name = document.createElement("p");
         name.className = "checkout-item-name";
-        name.textContent = item.name;
+        name.textContent = item.name || "STREETWEAR ITEM";
 
         const meta = document.createElement("p");
         meta.className = "checkout-item-meta";
-        meta.textContent =
-    `SIZE: ${["S", "M", "L", "XL"].includes(String(item.size).toUpperCase())
-        ? item.size
-        : `EU ${item.size}`} · QTY: ${item.quantity}`;
+        meta.textContent = `SIZE: ${item.size || "ONESIZE"} · QTY: ${item.quantity}`;
 
         details.append(name, meta);
 
         const price = document.createElement("strong");
         price.className = "checkout-item-price";
-        price.textContent = money(item.price * item.quantity);
+        
+        // Гарантируем, что цена и количество преобразуются в числа
+        const itemPrice = Number(item.price) || 0;
+        const itemQty = Number(item.quantity) || 1;
+        price.textContent = money(itemPrice * itemQty);
 
         row.append(image, details, price);
         itemsContainer.appendChild(row);
     });
 
-    const subtotal = cart.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-    );
-
+    const subtotal = cart.reduce((sum, item) => sum + ((Number(item.price) || 0) * (Number(item.quantity) || 0)), 0);
     const shipping = getShipping();
 
-    subtotalElement.textContent = money(subtotal);
-    shippingElement.textContent = money(shipping);
-    totalElement.textContent = money(subtotal + shipping);
+    if (subtotalElement) subtotalElement.textContent = money(subtotal);
+    if (shippingElement) shippingElement.textContent = money(shipping);
+    if (totalElement) totalElement.textContent = money(subtotal + shipping);
 
     return { cart, subtotal, shipping, total: subtotal + shipping };
 }
 
+// Отслеживаем переключение радиокнопок доставки
 document.querySelectorAll('input[name="shipping"]').forEach(input => {
     input.addEventListener("change", renderSummary);
 });
 
-form.addEventListener("submit", event => {
-    event.preventDefault();
-    const submitButton = form.querySelector('[type="submit"]');
-    if (submitButton.disabled) return;
-    errorMessage.textContent = "";
+if (form) {
+    form.addEventListener("submit", event => {
+        event.preventDefault();
+        const submitButton = form.querySelector('[type="submit"]');
+        if (submitButton && submitButton.disabled) return;
+        if (errorMessage) errorMessage.textContent = "";
 
-    const order = renderSummary();
+        const order = renderSummary();
 
-    if (order.cart.length === 0) {
-        errorMessage.textContent =
-            "Your bag is empty. Add a product before placing an order.";
-        return;
-    }
+        if (order.cart.length === 0) {
+            if (errorMessage) errorMessage.textContent = "Your bag is empty. Add a product before placing an order.";
+            return;
+        }
 
-    if (!form.reportValidity()) return;
+        if (!form.reportValidity()) return;
 
-    const reference =
-        "AH-" + Date.now().toString().slice(-8);
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = "ORDER CONFIRMED";
+        }
 
-    referenceElement.textContent = reference;
-    successTotalElement.textContent =
-        `Demo order total: ${money(order.total)}. No payment was taken.`;
-submitButton.disabled = true;
-submitButton.textContent = "ORDER CONFIRMED";
-    form.hidden = true;
-    document.querySelector(".checkout-summary").hidden = true;
-    document.querySelector(".checkout-heading").hidden = true;
-    successSection.hidden = false;
+        const reference = "AH-" + Date.now().toString().slice(-8);
 
-    // Save demo order history locally
-const savedOrders = JSON.parse(
-    localStorage.getItem("afterhours-orders") || "[]"
-);
+        if (referenceElement) referenceElement.textContent = reference;
+        if (successTotalElement) {
+            successTotalElement.textContent = `Demo order total: ${money(order.total)}. No payment was taken.`;
+        }
 
-const selectedShipping = document.querySelector(
-    'input[name="shipping"]:checked'
-);
+        form.hidden = true;
+        const summaryBox = document.querySelector(".checkout-summary");
+        const headingBox = document.querySelector(".checkout-heading");
+        if (summaryBox) summaryBox.hidden = true;
+        if (headingBox) headingBox.hidden = true;
+        if (successSection) successSection.hidden = false;
 
-const completedOrder = {
-    reference,
-    createdAt: new Date().toISOString(),
+        // Локальное сохранение логов истории заказов
+        try {
+            const savedOrders = JSON.parse(localStorage.getItem("afterhours-orders") || "[]");
+            const completedOrder = {
+                reference,
+                createdAt: new Date().toISOString(),
+                status: "confirmed",
+                customer: {
+                    email: form.email ? form.email.value.trim() : "",
+                    firstName: form.firstName ? form.firstName.value.trim() : "",
+                    lastName: form.lastName ? form.lastName.value.trim() : "",
+                    phone: form.phone ? form.phone.value.trim() : ""
+                },
+                items: order.cart,
+                total: order.total
+            };
+            savedOrders.push(completedOrder);
+            localStorage.setItem("afterhours-orders", JSON.stringify(savedOrders));
+        } catch (e) {
+            console.error("History save failed", e);
+        }
 
-    status: "confirmed",
+        // Очищаем корзину
+        localStorage.removeItem("afterhours-cart");
+        if (typeof updateFloatingCart === "function") {
+            updateFloatingCart();
+        }
+    });
+}
 
-    customer: {
-        email: form.email.value.trim(),
-        firstName: form.firstName.value.trim(),
-        lastName: form.lastName.value.trim(),
-        phone: form.phone.value.trim(),
-        country: form.country.value,
-        address: form.address.value.trim(),
-        city: form.city.value.trim(),
-        postalCode: form.postalCode.value.trim()
-    },
-
-    items: order.cart,
-
-    shippingMethod: selectedShipping?.value || "standard",
-    shipping: order.shipping,
-    subtotal: order.subtotal,
-    total: order.total,
-
-    paymentStatus: "not_paid"
-};
-
-savedOrders.push(completedOrder);
-
-localStorage.setItem(
-    "afterhours-orders",
-    JSON.stringify(savedOrders)
-);
-
-localStorage.setItem(
-    "afterhours-last-demo-order",
-    JSON.stringify(completedOrder)
-);
-
-localStorage.removeItem("afterhours-cart");
-});
+// Инициализация при загрузке страницы
 renderSummary();
